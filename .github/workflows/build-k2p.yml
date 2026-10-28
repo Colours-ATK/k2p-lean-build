@@ -35,3 +35,19 @@ jobs:
             --title "K2P A2 closed WiFi candidate ${GITHUB_RUN_NUMBER}" \
             --notes "Fixed source and feed revisions; cloud configuration, image content and checksum checks passed. This is NOT a device-tested stable release. Verify hardware, Breed layout and backups before any manual flashing."
           gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json url --jq .url >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish failure diagnostics
+        if: failure()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          compgen -G "deliverable/*" > /dev/null || { echo "no diagnostics collected"; exit 0; }
+          tag="diagnostic-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          gh release create "$tag" deliverable/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "K2P candidate diagnostics ${GITHUB_RUN_NUMBER}" \
+            --notes "Build failed before a candidate could be produced. Contains stage markers and compressed logs only; not a firmware release."
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json url --jq .url >> "$GITHUB_STEP_SUMMARY"
