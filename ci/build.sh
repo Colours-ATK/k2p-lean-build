@@ -72,8 +72,10 @@ make defconfig 2>&1 | tee "$work/logs/config.log"
   echo '=== providers of packages this build tries to keep absent ==='
   for symbol in luci-compat kmod-ipt-offload luci-proto-ipv6 default-settings; do
     echo "--- $symbol"
-    grep -R --include=Makefile -l "+$symbol" package/ feeds/ 2>/dev/null | head -10
+    grep -R --include=Makefile -l "+$symbol" package/ feeds/ 2>/dev/null | head -10 || true
   done
+  echo '=== resolved values of tracked symbols ==='
+  grep -E 'CONFIG_PACKAGE_(luci-compat|default-settings|luci-proto-ipv6|kmod-ipt-offload|luci-app-turboacc|kmod-mt7615d_dbdc|mt_wifi|luci-app-mtwifi)=' .config || true
 } | tee "$work/logs/exclusion-providers.txt"
 bash "$base/ci/verify-config.sh" "$base/configs/k2p.seed.config" .config 2>&1 | tee "$out/config-check.txt"
 [[ $(grep -Ec '^CONFIG_TARGET_ramips_mt7621_DEVICE_.*=y$' .config) == 1 ]]
