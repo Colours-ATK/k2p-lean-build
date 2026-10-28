@@ -5,7 +5,17 @@ base=$GITHUB_WORKSPACE
 work=$base/work
 out=$base/deliverable
 stage=W2
-trap 'rc=$?; printf "stage=%s exit=%s\n" "$stage" "$rc" >> "$GITHUB_STEP_SUMMARY"' EXIT
+report() {
+  rc=$?
+  mkdir -p "$out"
+  printf 'stage=%s exit=%s\n' "$stage" "$rc" > "$out/stage-exit.txt"
+  for f in "$work"/logs/*.log; do
+    [ -f "$f" ] && gzip -n -c "$f" > "$out/$(basename "$f").gz"
+  done
+  printf 'stage=%s exit=%s\n' "$stage" "$rc" >> "$GITHUB_STEP_SUMMARY"
+  return $rc
+}
+trap report EXIT
 [[ ! -e "$work" && ! -e "$out" ]]
 mkdir -p "$work/feed-sources" "$work/logs" "$out"
 {
