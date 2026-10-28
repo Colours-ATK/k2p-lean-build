@@ -72,6 +72,13 @@ for name in packages luci routing; do
 done
 git rev-parse HEAD > "$out/source.lock"
 
+mkdir -p "$work/lede/files/usr/lib/lua" "$work/lede/files/etc/wireless"
+cp "$base/assets/l1dat_parser.lua" "$work/lede/files/usr/lib/lua/l1dat_parser.lua"
+cp "$base/assets/l1profile.dat" "$work/lede/files/etc/wireless/l1profile.dat"
+[[ -s "$work/lede/files/usr/lib/lua/l1dat_parser.lua" && -s "$work/lede/files/etc/wireless/l1profile.dat" ]]
+printf 'W4: installed l1dat_parser and l1profile overrides
+'
+
 stage=W4
 grep -Fq 'define Device/phicomm_k2p' target/linux/ramips/image/mt7621.mk
 grep -Eq 'IMAGE_SIZE[[:space:]]*:=[[:space:]]*15744k' target/linux/ramips/image/mt7621.mk
@@ -163,7 +170,7 @@ PY
   offset=$(< "$work/rootfs-offset")
   unsquashfs -l -o "$offset" "$fw" > "$out/rootfs-listing.txt" 2>&1 || { printf 'Cannot list the root filesystem inside the image\n' >&2; exit 1; }
 fi
-for name in etc/wireless/l1profile.dat etc/wireless/mt7615/mt7615.1.2G.dat etc/wireless/mt7615/mt7615.1.5G.dat usr/sbin/iwpriv usr/sbin/smartdns usr/sbin/dnsmasq; do
+for name in usr/lib/lua/l1dat_parser.lua etc/wireless/l1profile.dat etc/wireless/mt7615/mt7615.1.2G.dat etc/wireless/mt7615/mt7615.1.5G.dat usr/sbin/iwpriv usr/sbin/smartdns usr/sbin/dnsmasq; do
   printf 'W6: checking %s\n' "$name"
   grep -q "$name" "$out/rootfs-listing.txt" || { printf 'Missing image content: %s\n' "$name" >&2; exit 1; }
   printf 'present: %s\n' "$name" >> "$out/image-check.txt"
