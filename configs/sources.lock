@@ -1,0 +1,4 @@
+lede https://github.com/coolsnowwolf/lede.git 8867669e23613233dde23cad3efe9d1f5de2cec8
+packages https://github.com/coolsnowwolf/packages.git 12fe94094ea44d0d7fcce2841f0405c473e4cd4e
+luci https://github.com/coolsnowwolf/luci.git ace2bebe51720f428bdf9e94b324b890cd7799b6
+routing https://github.com/coolsnowwolf/routing.git 2d0f967bd6bd95d4c0d3c330e4713e79d75b4c54
