@@ -100,8 +100,22 @@ cmp "$out/config.diff" "$work/reproduced.diff"
 printf 'Required/forbidden settings and minimal configuration reconstruction passed\n' >> "$out/config-check.txt"
 
 stage=W5
-make download -j"$jobs" V=s 2>&1 | tee "$work/logs/download.log"
-make -j"$jobs" V=s 2>&1 | tee "$work/logs/build.log"
+{
+  echo '=== disk before download ==='
+  df -h "$base"
+} | tee "$work/logs/disk.log"
+make download -j"$jobs" 2>&1 | tee "$work/logs/download.log"
+{
+  echo '=== disk after download ==='
+  df -h "$base"
+  du -sh "$work/lede/dl" 2>/dev/null || true
+} | tee -a "$work/logs/disk.log"
+make -j"$jobs" 2>&1 | tee "$work/logs/build.log"
+{
+  echo '=== disk after build ==='
+  df -h "$base"
+  du -sh "$work/lede/build_dir" "$work/lede/staging_dir" "$work/lede/tmp" 2>/dev/null || true
+} | tee -a "$work/logs/disk.log"
 
 stage=W6
 mapfile -d '' images < <(find bin/targets/ramips/mt7621 -maxdepth 1 -type f -name '*phicomm_k2p*sysupgrade.bin' -print0)
