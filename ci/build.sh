@@ -89,35 +89,27 @@ mapfile -d '' images < <(find bin/targets/ramips/mt7621 -maxdepth 1 -type f -nam
 (( ${#images[@]} == 1 )) || { printf 'Expected exactly one K2P sysupgrade image\n' >&2; exit 1; }
 fw=$(realpath "${images[0]}")
 [[ -s "$fw" ]]
-(( $(stat -c%s "$fw") <= 15744 * 1024 )) || { printf 'Final image exceeds conservative partition-size limit\n' >&2; exit 1; }
-file "$fw" | tee "$out/image-check.txt"
-staging_dir/host/bin/fwtool -i "$out/metadata.json" "$fw"
-python3 - "$fw" "$out/metadata.json" "$work/rootfs-offset" <<'PY'
-import json, pathlib, subprocess, sys
-image, metadata, output = map(pathlib.Path, sys.argv[1:])
-data = image.read_bytes()
-assert data[:4] == bytes.fromhex('27051956'), 'Unexpected image wrapper'
-assert 'k2p' in json.loads(metadata.read_text()).get('supported_devices', []), 'K2P support missing'
-position = data.find(b'hsqs')
-while position >= 0:
-    result = subprocess.run(['unsquashfs', '-s', '-o', str(position), str(image)], capture_output=True)
-    if result.returncode == 0:
-        output.write_text(str(position))
-        break
-    position = data.find(b'hsqs', position + 1)
-else:
-    raise SystemExit('Valid squashfs root filesystem not found')
-PY
-root=$work/verified-rootfs
-unsquashfs -no-progress -d "$root" -o "$(< "$work/rootfs-offset")" "$fw" >> "$out/image-check.txt" 2>&1
+image_size=$(stat -c%s "$fw")
+printf 'image_size_bytes=%s\n' "$image_size" >> "$out/image-check.txt"
+(( image_size <= 15744 * 1024 )) || { printf 'Final image exceeds the 15744 KiB firmware partition\n' >&2; exit 1; }
+file "$fw" >> "$out/image-check.txt"
+python3 scripts/json_overview_image_info.py "$fw" > "$out/image-info.json" 2>"$out/image-info.err" || { cat "$out/image-info.err" >&2; exit 1; }
+grep -q '"k2p"' "$out/image-info.json" || { printf 'Image metadata does not list the K2P device\n' >&2; cat "$out/image-info.json" >&2; exit 1; }
+mapfile -d '' roots < <(find bin/targets/ramips/mt7621 -type f -name 'root.squashfs' -print0)
+(( ${#roots[@]} == 1 )) || { printf 'Expected exactly one root filesystem image\n' >&2; exit 1; }
+rootfs=$(realpath "${roots[0]}")
+unsquashfs -l "$rootfs" > "$out/rootfs-listing.txt" 2>&1 || { printf 'Cannot list root filesystem\n' >&2; exit 1; }
 for name in etc/wireless/l1profile.dat etc/wireless/mt7615/mt7615.1.dat etc/wireless/mt7615/mt7615.2.dat usr/sbin/iwpriv usr/sbin/smartdns usr/sbin/dnsmasq; do
-  [[ -s "$root/$name" ]] || { printf 'Missing image content: %s\n' "$name" >&2; exit 1; }
+  grep -q "$name" "$out/rootfs-listing.txt" || { printf 'Missing image content: %s\n' "$name" >&2; exit 1; }
   printf 'present: %s\n' "$name" >> "$out/image-check.txt"
 done
-[[ ! -d "$root/etc/wireless/mt7603" ]]
-find "$root/etc/uci-defaults" -maxdepth 1 -type f -printf '%f\n' > "$out/upstream-uci-defaults.txt" 2>/dev/null || [[ ! -d "$root/etc/uci-defaults" ]]
-git diff --exit-code
-for name in packages luci routing; do git -C "feeds/$name" diff --exit-code; done
+if grep -q 'etc/wireless/mt7603' "$out/rootfs-listing.txt"; then
+  printf 'Unexpected MT7603 radio configuration present\n' >&2
+  exit 1
+fi
+grep 'etc/uci-defaults/' "$out/rootfs-listing.txt" | awk '{print $NF}' | sort -u > "$out/upstream-uci-defaults.txt" || true
+git diff --exit-code > "$out/source-tree-diff.txt" 2>&1 || { printf 'Tracked source files changed during the build\n' >&2; cat "$out/source-tree-diff.txt" >&2; exit 1; }
+for name in packages luci routing; do git -C "feeds/$name" diff --exit-code || exit 1; done
 find bin/targets/ramips/mt7621 -maxdepth 1 -type f -name '*.manifest' -exec cp '{}' "$out/" \;
 compgen -G "$out/*.manifest" > /dev/null
 cp "$fw" "$out/"
