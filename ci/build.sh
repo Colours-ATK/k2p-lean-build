@@ -118,14 +118,20 @@ make -j"$jobs" 2>&1 | tee "$work/logs/build.log"
 } | tee -a "$work/logs/disk.log"
 
 stage=W6
+printf 'W6: start image verification
+'
 mapfile -d '' images < <(find bin/targets/ramips/mt7621 -maxdepth 1 -type f -name '*phicomm_k2p*sysupgrade.bin' -print0)
 (( ${#images[@]} == 1 )) || { printf 'Expected exactly one K2P sysupgrade image\n' >&2; exit 1; }
 fw=$(realpath "${images[0]}")
 [[ -s "$fw" ]]
 image_size=$(stat -c%s "$fw")
+printf 'W6: image size %s
+' "$image_size"
 printf 'image_size_bytes=%s\n' "$image_size" >> "$out/image-check.txt"
 (( image_size <= 15744 * 1024 )) || { printf 'Final image exceeds the 15744 KiB firmware partition\n' >&2; exit 1; }
 file "$fw" >> "$out/image-check.txt"
+printf 'W6: extracting metadata
+'
 staging_dir/host/bin/fwtool -q -i "$out/image-metadata.json" "$fw"
 [[ -s "$out/image-metadata.json" ]] || { printf 'Image metadata could not be extracted\n' >&2; exit 1; }
 grep -q '"k2p"' "$out/image-metadata.json" || { printf 'Image metadata does not list the K2P device\n' >&2; cat "$out/image-metadata.json" >&2; exit 1; }
@@ -133,6 +139,8 @@ mapfile -d '' profile_json < <(find bin/targets/ramips/mt7621 -maxdepth 1 -type 
 if (( ${#profile_json[@]} > 0 )); then
   WORK_DIR="$PWD/bin/targets/ramips/mt7621" python3 scripts/json_overview_image_info.py "$out/profiles-overview.json" || true
 fi
+printf 'W6: locating root filesystem
+'
 mapfile -d '' roots < <(find bin/targets/ramips/mt7621 -type f -name 'root.squashfs' -print0)
 if (( ${#roots[@]} >= 1 )); then
   rootfs=$(realpath "${roots[0]}")
@@ -155,10 +163,15 @@ PY
   offset=$(< "$work/rootfs-offset")
   unsquashfs -l -o "$offset" "$fw" > "$out/rootfs-listing.txt" 2>&1 || { printf 'Cannot list the root filesystem inside the image\n' >&2; exit 1; }
 fi
-for name in etc/wireless/l1profile.dat etc/wireless/mt7615/mt7615.1.dat etc/wireless/mt7615/mt7615.2.dat usr/sbin/iwpriv usr/sbin/smartdns usr/sbin/dnsmasq; do
+for name in etc/wireless/l1profile.dat etc/wireless/mt7615/mt7615.1.2G.dat etc/wireless/mt7615/mt7615.1.5G.dat usr/sbin/iwpriv usr/sbin/smartdns usr/sbin/dnsmasq; do
+  printf 'W6: checking %s\n' "$name"
   grep -q "$name" "$out/rootfs-listing.txt" || { printf 'Missing image content: %s\n' "$name" >&2; exit 1; }
   printf 'present: %s\n' "$name" >> "$out/image-check.txt"
 done
+if grep -q 'etc/wireless/mt7615/mt7615\.1\.dat' "$out/rootfs-listing.txt"; then
+  printf 'Unexpected fallback-branch profile present, expected the DBDC branch\n' >&2
+  exit 1
+fi
 if grep -q 'etc/wireless/mt7603' "$out/rootfs-listing.txt"; then
   printf 'Unexpected MT7603 radio configuration present\n' >&2
   exit 1
