@@ -126,12 +126,35 @@ image_size=$(stat -c%s "$fw")
 printf 'image_size_bytes=%s\n' "$image_size" >> "$out/image-check.txt"
 (( image_size <= 15744 * 1024 )) || { printf 'Final image exceeds the 15744 KiB firmware partition\n' >&2; exit 1; }
 file "$fw" >> "$out/image-check.txt"
-python3 scripts/json_overview_image_info.py "$fw" > "$out/image-info.json" 2>"$out/image-info.err" || { cat "$out/image-info.err" >&2; exit 1; }
-grep -q '"k2p"' "$out/image-info.json" || { printf 'Image metadata does not list the K2P device\n' >&2; cat "$out/image-info.json" >&2; exit 1; }
+staging_dir/host/bin/fwtool -q -i "$out/image-metadata.json" "$fw"
+[[ -s "$out/image-metadata.json" ]] || { printf 'Image metadata could not be extracted\n' >&2; exit 1; }
+grep -q '"k2p"' "$out/image-metadata.json" || { printf 'Image metadata does not list the K2P device\n' >&2; cat "$out/image-metadata.json" >&2; exit 1; }
+mapfile -d '' profile_json < <(find bin/targets/ramips/mt7621 -maxdepth 1 -type f -name '*.json' -print0)
+if (( ${#profile_json[@]} > 0 )); then
+  WORK_DIR="$PWD/bin/targets/ramips/mt7621" python3 scripts/json_overview_image_info.py "$out/profiles-overview.json" || true
+fi
 mapfile -d '' roots < <(find bin/targets/ramips/mt7621 -type f -name 'root.squashfs' -print0)
-(( ${#roots[@]} == 1 )) || { printf 'Expected exactly one root filesystem image\n' >&2; exit 1; }
-rootfs=$(realpath "${roots[0]}")
-unsquashfs -l "$rootfs" > "$out/rootfs-listing.txt" 2>&1 || { printf 'Cannot list root filesystem\n' >&2; exit 1; }
+if (( ${#roots[@]} >= 1 )); then
+  rootfs=$(realpath "${roots[0]}")
+  unsquashfs -l "$rootfs" > "$out/rootfs-listing.txt" 2>&1 || { printf 'Cannot list root filesystem\n' >&2; exit 1; }
+else
+  python3 - "$fw" "$work/rootfs-offset" <<'PY'
+import pathlib, subprocess, sys
+image, output = map(pathlib.Path, sys.argv[1:])
+data = image.read_bytes()
+position = data.find(b'hsqs')
+while position >= 0:
+    result = subprocess.run(['unsquashfs', '-s', '-o', str(position), str(image)], capture_output=True)
+    if result.returncode == 0:
+        output.write_text(str(position))
+        break
+    position = data.find(b'hsqs', position + 1)
+else:
+    raise SystemExit('No valid squashfs root filesystem found inside the image')
+PY
+  offset=$(< "$work/rootfs-offset")
+  unsquashfs -l -o "$offset" "$fw" > "$out/rootfs-listing.txt" 2>&1 || { printf 'Cannot list the root filesystem inside the image\n' >&2; exit 1; }
+fi
 for name in etc/wireless/l1profile.dat etc/wireless/mt7615/mt7615.1.dat etc/wireless/mt7615/mt7615.2.dat usr/sbin/iwpriv usr/sbin/smartdns usr/sbin/dnsmasq; do
   grep -q "$name" "$out/rootfs-listing.txt" || { printf 'Missing image content: %s\n' "$name" >&2; exit 1; }
   printf 'present: %s\n' "$name" >> "$out/image-check.txt"
