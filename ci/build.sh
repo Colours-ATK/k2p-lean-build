@@ -68,6 +68,13 @@ grep -Eq 'IMAGE_SIZE[[:space:]]*:=[[:space:]]*15744k' target/linux/ramips/image/
 [[ ! -e .config ]]
 cp "$base/configs/k2p.seed.config" .config
 make defconfig 2>&1 | tee "$work/logs/config.log"
+{
+  echo '=== providers of packages this build tries to keep absent ==='
+  for symbol in luci-compat kmod-ipt-offload luci-proto-ipv6 default-settings; do
+    echo "--- $symbol"
+    grep -R --include=Makefile -l "+$symbol" package/ feeds/ 2>/dev/null | head -10
+  done
+} | tee "$work/logs/exclusion-providers.txt"
 bash "$base/ci/verify-config.sh" "$base/configs/k2p.seed.config" .config 2>&1 | tee "$out/config-check.txt"
 [[ $(grep -Ec '^CONFIG_TARGET_ramips_mt7621_DEVICE_.*=y$' .config) == 1 ]]
 cp .config "$out/config.snapshot"
