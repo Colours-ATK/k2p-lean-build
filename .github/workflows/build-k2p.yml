@@ -27,8 +27,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          mapfile -t files < <(find deliverable -maxdepth 1 -type f -size +0c | sort)
+          (( ${#files[@]} > 0 )) || { echo "no candidate assets collected"; exit 1; }
           tag="candidate-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          gh release create "$tag" deliverable/* \
+          gh release create "$tag" "${files[@]}" \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --prerelease \
@@ -42,9 +44,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          compgen -G "deliverable/*" > /dev/null || { echo "no diagnostics collected"; exit 0; }
+          mapfile -t files < <(find deliverable -maxdepth 1 -type f -size +0c | sort)
+          (( ${#files[@]} > 0 )) || { echo "no diagnostics collected"; exit 0; }
           tag="diagnostic-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          gh release create "$tag" deliverable/* \
+          gh release create "$tag" "${files[@]}" \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --prerelease \
