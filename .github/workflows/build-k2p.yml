@@ -1,0 +1,37 @@
+name: K2P A2 closed WiFi candidate
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: k2p-candidate-build
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 355
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout reviewed build instructions
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Validate environment, lock sources, configure, build and verify
+        shell: bash
+        run: bash ci/build.sh
+      - name: Publish verified candidate assets
+        if: success()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="candidate-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          gh release create "$tag" deliverable/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "K2P A2 closed WiFi candidate ${GITHUB_RUN_NUMBER}" \
+            --notes "Fixed source and feed revisions; cloud configuration, image content and checksum checks passed. This is NOT a device-tested stable release. Verify hardware, Breed layout and backups before any manual flashing."
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json url --jq .url >> "$GITHUB_STEP_SUMMARY"
