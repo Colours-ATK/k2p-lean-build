@@ -11,6 +11,9 @@ USE_PROCD=1
 
 start_service() {
 	[ -f /etc/hotplug.d/firmware/11-mtk-wifi-e2p ] && sh /etc/hotplug.d/firmware/11-mtk-wifi-e2p
+	# mt_wifi writes its DBDC state here at init; without the directory it logs
+	# Error 2 and keeps running on defaults.
+	mkdir -p /tmp/profiles
 	# This Lean tree ships no boot hook that calls wifi up, and the no-argument
 	# form of mtkwifi crashes on a device entry without init_compatible, so
 	# bring each parsed device up by name. mt7615_up() also bridges the
