@@ -1,0 +1,9 @@
+#!/bin/sh
+# MTK closed-source radio bring-up. This Lean tree ships no boot hook that
+# calls wifi up, and the no-argument form of mtkwifi crashes on a device entry
+# without init_compatible, so bring each parsed device up by name.
+[ -x /sbin/mtkwifi ] || exit 0
+for d in $(lua -e 'package.path="/usr/lib/lua/?.lua;"..package.path; local ok,m=pcall(require,"mtkwifi"); if not ok then return end; for k in pairs(m.search_dev_and_profile()) do io.write(k," ") end' 2>/dev/null); do
+	/sbin/mtkwifi up "$d" >/dev/null 2>&1
+done
+exit 0
