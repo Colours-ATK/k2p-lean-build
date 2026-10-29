@@ -92,7 +92,7 @@ mkdir -p "$work/lede/files/etc/uci-defaults"
 cp "$base/assets/99-k2p-lan-ip" "$work/lede/files/etc/uci-defaults/99-k2p-lan-ip"
 chmod 0755 "$work/lede/files/etc/uci-defaults/99-k2p-lan-ip"
 [[ -x "$work/lede/files/etc/uci-defaults/99-k2p-lan-ip" ]]
-python3 "$base/assets/patch-templates.py" "$work/lede/package/lean/mt/luci-app-mtwifi/luasrc/view/admin_mtk" "$work/lede/files/usr/lib/lua/luci/view/admin_mtk"
+python3 "$base/assets/patch-templates.py" "$work/lede" "$work/lede/files"
 compgen -G "$work/lede/files/usr/lib/lua/luci/view/admin_mtk/*.htm" > /dev/null
 printf 'Patched mtwifi templates: svg icons and buffered profile listing
 '
@@ -179,6 +179,7 @@ printf 'W6: locating root filesystem
 mapfile -d '' roots < <(find bin/targets/ramips/mt7621 -type f -name 'root.squashfs' -print0)
 if (( ${#roots[@]} >= 1 )); then
   rootfs=$(realpath "${roots[0]}")
+  rootfs_opts=""
   unsquashfs -l "$rootfs" > "$out/rootfs-listing.txt" 2>&1 || { printf 'Cannot list root filesystem\n' >&2; exit 1; }
 else
   python3 - "$fw" "$work/rootfs-offset" <<'PY'
@@ -196,6 +197,8 @@ else:
     raise SystemExit('No valid squashfs root filesystem found inside the image')
 PY
   offset=$(< "$work/rootfs-offset")
+  rootfs=$fw
+  rootfs_opts="-o $offset"
   unsquashfs -l -o "$offset" "$fw" > "$out/rootfs-listing.txt" 2>&1 || { printf 'Cannot list the root filesystem inside the image\n' >&2; exit 1; }
 fi
 for name in usr/lib/lua/l1dat_parser.lua etc/wireless/l1profile.dat etc/wireless/mt7615/mt7615.1.2G.dat etc/wireless/mt7615/mt7615.1.5G.dat usr/sbin/iwpriv usr/sbin/smartdns usr/sbin/dnsmasq; do
@@ -214,9 +217,11 @@ fi
 printf 'W6: verifying boot hook content
 '
 if command -v unsquashfs >/dev/null && [ -n "${rootfs:-}" ]; then
-  unsquashfs -cat "$rootfs" etc/init.d/firmware.sh 2>/dev/null | grep -q "mtkwifi up" || { printf 'Boot hook missing from the image
+  unsquashfs -cat ${rootfs_opts:-} "$rootfs" etc/init.d/firmware.sh 2>/dev/null | grep -q "mtkwifi up" || { printf 'Boot hook missing from the image
 ' >&2; exit 1; }
-  unsquashfs -cat "$rootfs" usr/lib/lua/luci/view/admin_mtk/mtk_wifi_dev_cfg.htm 2>/dev/null | grep -q "print(line)" && { printf 'Unpatched mtwifi template in the image
+  unsquashfs -cat ${rootfs_opts:-} "$rootfs" usr/lib/lua/luci/view/admin_mtk/mtk_wifi_dev_cfg.htm 2>/dev/null | grep -q "print(line)" && { printf 'Unpatched mtwifi template in the image
+' >&2; exit 1; }
+  unsquashfs -cat ${rootfs_opts:-} "$rootfs" usr/lib/lua/mtkwifi.lua 2>/dev/null | grep -q "pcall(io.popen" || { printf 'Unpatched mtkwifi.read_pipe in the image
 ' >&2; exit 1; }
   printf 'OK: boot hook present in image
 ' >> "$out/image-check.txt"
