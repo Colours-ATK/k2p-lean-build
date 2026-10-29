@@ -87,6 +87,11 @@ cp "$base/assets/l1dat_parser.lua" "$work/lede/files/usr/lib/lua/l1dat_parser.lu
 cp "$base/assets/l1profile.dat" "$work/lede/files/etc/wireless/l1profile.dat"
 mkdir -p "$work/lede/files/etc/init.d"
 cp "$base/assets/firmware.sh" "$work/lede/files/etc/init.d/firmware.sh"
+mkdir -p "$work/lede/files/usr/lib/lua/luci/view/admin_mtk"
+python3 "$base/assets/patch-templates.py" "$work/lede/package/lean/mt/luci-app-mtwifi/luasrc/view/admin_mtk" "$work/lede/files/usr/lib/lua/luci/view/admin_mtk"
+compgen -G "$work/lede/files/usr/lib/lua/luci/view/admin_mtk/*.htm" > /dev/null
+printf 'Patched mtwifi templates: svg icons and buffered profile listing
+'
 chmod 0755 "$work/lede/files/etc/init.d/firmware.sh"
 [[ -s "$work/lede/files/usr/lib/lua/l1dat_parser.lua" && -s "$work/lede/files/etc/wireless/l1profile.dat" && -x "$work/lede/files/etc/init.d/firmware.sh" ]]
 printf 'W4: installed l1dat_parser and l1profile overrides
@@ -206,6 +211,8 @@ printf 'W6: verifying boot hook content
 '
 if command -v unsquashfs >/dev/null && [ -n "${rootfs:-}" ]; then
   unsquashfs -cat "$rootfs" etc/init.d/firmware.sh 2>/dev/null | grep -q "mtkwifi up" || { printf 'Boot hook missing from the image
+' >&2; exit 1; }
+  unsquashfs -cat "$rootfs" usr/lib/lua/luci/view/admin_mtk/mtk_wifi_dev_cfg.htm 2>/dev/null | grep -q "print(line)" && { printf 'Unpatched mtwifi template in the image
 ' >&2; exit 1; }
   printf 'OK: boot hook present in image
 ' >> "$out/image-check.txt"
