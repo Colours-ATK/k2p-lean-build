@@ -1,0 +1,8 @@
+# Put your custom commands here that should be executed once
+# the system init finished. By default this file does nothing.
+
+# MTK closed-source radio bring-up: this Lean tree ships no boot hook that
+# calls wifi up, and mt7615_up() also bridges ra0/rax0 into br-lan.
+[ -x /sbin/mtkwifi ] && /sbin/mtkwifi up
+
+exit 0
