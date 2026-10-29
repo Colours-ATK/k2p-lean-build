@@ -85,7 +85,8 @@ git rev-parse HEAD > "$out/source.lock"
 mkdir -p "$work/lede/files/usr/lib/lua" "$work/lede/files/etc/wireless"
 cp "$base/assets/l1dat_parser.lua" "$work/lede/files/usr/lib/lua/l1dat_parser.lua"
 cp "$base/assets/l1profile.dat" "$work/lede/files/etc/wireless/l1profile.dat"
-[[ -s "$work/lede/files/usr/lib/lua/l1dat_parser.lua" && -s "$work/lede/files/etc/wireless/l1profile.dat" ]]
+cp "$base/assets/rc.local" "$work/lede/files/etc/rc.local"
+[[ -s "$work/lede/files/usr/lib/lua/l1dat_parser.lua" && -s "$work/lede/files/etc/wireless/l1profile.dat" && -s "$work/lede/files/etc/rc.local" ]]
 printf 'W4: installed l1dat_parser and l1profile overrides
 '
 
