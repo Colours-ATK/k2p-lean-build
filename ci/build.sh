@@ -16,7 +16,15 @@ report() {
   return $rc
 }
 trap report EXIT
-[[ ! -e "$work" && ! -e "$out" ]]
+if [[ -e "$work" ]]; then
+  # a restored download cache may pre-create work/lede/dl; nothing else may exist
+  mapfile -t pre < <(find "$work" -mindepth 1 -maxdepth 1 -printf '%f
+')
+  [[ ${#pre[@]} -eq 1 && "${pre[0]}" == lede && -d "$work/lede/dl" && $(find "$work/lede" -mindepth 1 -maxdepth 1 -printf '%f
+' | wc -l) -eq 1 ]] || { printf 'Unexpected pre-existing work tree
+' >&2; exit 1; }
+fi
+[[ ! -e "$out" ]]
 mkdir -p "$work/feed-sources" "$work/logs" "$out"
 {
   uname -a
@@ -42,6 +50,8 @@ available_kb=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
 printf 'build_jobs=%s\n' "$jobs" >> "$out/environment.txt"
 
 stage=W3
+printf 'T+%s %s begin
+' "$(date -u +%H:%M:%S)" "W3"
 export GIT_TERMINAL_PROMPT=0
 while read -r name url sha; do
   [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
@@ -80,6 +90,8 @@ printf 'W4: installed l1dat_parser and l1profile overrides
 '
 
 stage=W4
+printf 'T+%s %s begin
+' "$(date -u +%H:%M:%S)" "W4"
 grep -Fq 'define Device/phicomm_k2p' target/linux/ramips/image/mt7621.mk
 grep -Eq 'IMAGE_SIZE[[:space:]]*:=[[:space:]]*15744k' target/linux/ramips/image/mt7621.mk
 [[ ! -e .config ]]
@@ -107,6 +119,8 @@ cmp "$out/config.diff" "$work/reproduced.diff"
 printf 'Required/forbidden settings and minimal configuration reconstruction passed\n' >> "$out/config-check.txt"
 
 stage=W5
+printf 'T+%s %s begin
+' "$(date -u +%H:%M:%S)" "W5"
 {
   echo '=== disk before download ==='
   df -h "$base"
@@ -125,6 +139,8 @@ make -j"$jobs" 2>&1 | tee "$work/logs/build.log"
 } | tee -a "$work/logs/disk.log"
 
 stage=W6
+printf 'T+%s %s begin
+' "$(date -u +%H:%M:%S)" "W6"
 printf 'W6: start image verification
 '
 mapfile -d '' images < <(find bin/targets/ramips/mt7621 -maxdepth 1 -type f -name '*phicomm_k2p*sysupgrade.bin' -print0)
