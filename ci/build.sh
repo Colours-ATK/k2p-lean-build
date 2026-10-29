@@ -222,6 +222,8 @@ if command -v unsquashfs >/dev/null && [ -n "${rootfs:-}" ]; then
 ' >&2; exit 1; }
   printf '%s\n' "$hook" | grep -qx "START=40" || { printf 'Boot hook must start after S20network (START=40)
 ' >&2; exit 1; }
+  printf '%s\n' "$hook" | grep -q "mkdir -p /tmp/profiles" || { printf 'Boot hook must create /tmp/profiles before mtkwifi up
+' >&2; exit 1; }
   unsquashfs -cat ${rootfs_opts:-} "$rootfs" usr/lib/lua/luci/view/admin_mtk/mtk_wifi_dev_cfg.htm 2>/dev/null | grep -q "print(line)" && { printf 'Unpatched mtwifi template in the image
 ' >&2; exit 1; }
   unsquashfs -cat ${rootfs_opts:-} "$rootfs" usr/lib/lua/mtkwifi.lua 2>/dev/null | grep -q "pcall(io.popen" || { printf 'Unpatched mtkwifi.read_pipe in the image
