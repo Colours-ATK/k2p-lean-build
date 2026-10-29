@@ -17,6 +17,12 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+      - name: Restore the download cache
+        uses: actions/cache@v4
+        with:
+          path: work/lede/dl
+          key: dl-${{ hashFiles('configs/sources.lock') }}
+          restore-keys: dl-
       - name: Validate environment, lock sources, configure, build and verify
         shell: bash
         run: bash ci/build.sh
