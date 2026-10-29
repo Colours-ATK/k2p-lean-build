@@ -88,6 +88,10 @@ cp "$base/assets/l1profile.dat" "$work/lede/files/etc/wireless/l1profile.dat"
 mkdir -p "$work/lede/files/etc/init.d"
 cp "$base/assets/firmware.sh" "$work/lede/files/etc/init.d/firmware.sh"
 mkdir -p "$work/lede/files/usr/lib/lua/luci/view/admin_mtk"
+mkdir -p "$work/lede/files/etc/uci-defaults"
+cp "$base/assets/99-k2p-lan-ip" "$work/lede/files/etc/uci-defaults/99-k2p-lan-ip"
+chmod 0755 "$work/lede/files/etc/uci-defaults/99-k2p-lan-ip"
+[[ -x "$work/lede/files/etc/uci-defaults/99-k2p-lan-ip" ]]
 python3 "$base/assets/patch-templates.py" "$work/lede/package/lean/mt/luci-app-mtwifi/luasrc/view/admin_mtk" "$work/lede/files/usr/lib/lua/luci/view/admin_mtk"
 compgen -G "$work/lede/files/usr/lib/lua/luci/view/admin_mtk/*.htm" > /dev/null
 printf 'Patched mtwifi templates: svg icons and buffered profile listing
