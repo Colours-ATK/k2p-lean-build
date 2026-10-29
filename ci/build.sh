@@ -202,6 +202,14 @@ if grep -q 'etc/wireless/mt7603' "$out/rootfs-listing.txt"; then
   printf 'Unexpected MT7603 radio configuration present\n' >&2
   exit 1
 fi
+printf 'W6: verifying boot hook content
+'
+if command -v unsquashfs >/dev/null && [ -n "${rootfs:-}" ]; then
+  unsquashfs -cat "$rootfs" etc/init.d/firmware.sh 2>/dev/null | grep -q "mtkwifi up" || { printf 'Boot hook missing from the image
+' >&2; exit 1; }
+  printf 'OK: boot hook present in image
+' >> "$out/image-check.txt"
+fi
 grep 'etc/uci-defaults/' "$out/rootfs-listing.txt" | awk '{print $NF}' | sort -u > "$out/upstream-uci-defaults.txt" || true
 git diff --exit-code > "$out/source-tree-diff.txt" 2>&1 || { printf 'Tracked source files changed during the build\n' >&2; cat "$out/source-tree-diff.txt" >&2; exit 1; }
 for name in packages luci routing; do git -C "feeds/$name" diff --exit-code || exit 1; done
