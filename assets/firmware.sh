@@ -2,7 +2,9 @@
 
 chmod 0755 /sbin/mtkwifi
 
-START=15
+# Must start after S20network: br-lan is created by netifd, and an earlier
+# start makes the bridge addif in mt7615_up() fail silently.
+START=40
 STOP=15
 
 USE_PROCD=1
