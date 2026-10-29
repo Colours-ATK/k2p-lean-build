@@ -1,0 +1,6 @@
+#!/bin/sh
+# Default LAN address requested for this build. Raw-addresses the image's
+# default config; DHCP start/limit (100/150) follow the subnet automatically.
+uci -q set network.lan.ipaddr='192.168.2.1'
+uci -q commit network
+exit 0
