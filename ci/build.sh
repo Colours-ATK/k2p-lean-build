@@ -217,7 +217,10 @@ fi
 printf 'W6: verifying boot hook content
 '
 if command -v unsquashfs >/dev/null && [ -n "${rootfs:-}" ]; then
-  unsquashfs -cat ${rootfs_opts:-} "$rootfs" etc/init.d/firmware.sh 2>/dev/null | grep -q "mtkwifi up" || { printf 'Boot hook missing from the image
+  hook=$(unsquashfs -cat ${rootfs_opts:-} "$rootfs" etc/init.d/firmware.sh 2>/dev/null)
+  printf '%s\n' "$hook" | grep -q "mtkwifi up" || { printf 'Boot hook missing from the image
+' >&2; exit 1; }
+  printf '%s\n' "$hook" | grep -qx "START=40" || { printf 'Boot hook must start after S20network (START=40)
 ' >&2; exit 1; }
   unsquashfs -cat ${rootfs_opts:-} "$rootfs" usr/lib/lua/luci/view/admin_mtk/mtk_wifi_dev_cfg.htm 2>/dev/null | grep -q "print(line)" && { printf 'Unpatched mtwifi template in the image
 ' >&2; exit 1; }
