@@ -32,7 +32,7 @@ define Package/luci-app-xkcptun
 	PKGARCH:=all
 	# luci-compat provides the legacy Lua dispatcher that this app is built on;
 	# luci-lib-ipkg provides the luci.model.ipkg module the CBI model requires.
-	DEPENDS:=+luci-base+luci-compat+luci-lib-ipkg
+	DEPENDS:=+luci-base +luci-compat +luci-lib-ipkg
 endef
 
 define Package/luci-app-xkcptun/description
