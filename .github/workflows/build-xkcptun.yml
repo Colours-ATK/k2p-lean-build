@@ -1,0 +1,62 @@
+name: xkcptun package feasibility
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: k2p-extra-package-build
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout reviewed build instructions
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Restore the download cache
+        uses: actions/cache@v4
+        with:
+          path: work/lede/dl
+          key: dl-${{ hashFiles('configs/sources.lock') }}
+          restore-keys: dl-
+      - name: Compile extra packages against the pinned tree
+        shell: bash
+        run: bash ci/build-extra.sh
+      - name: Publish compiled packages
+        if: success()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find deliverable -type f -size +0c | sort)
+          (( ${#files[@]} > 0 )) || { echo "no package assets collected"; exit 1; }
+          tag="packages-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          gh release create "$tag" "${files[@]}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "K2P extra packages ${GITHUB_RUN_NUMBER}" \
+            --notes "Feasibility build: xkcptun plus dependencies compiled against the pinned Lean tree. Not a firmware release and not device-tested; the legacy LuCI app still needs its CBI model aligned with the 2026 UCI schema before the UI can drive the daemon."
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json url --jq .url >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish failure diagnostics
+        if: failure()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find deliverable -type f -size +0c | sort)
+          (( ${#files[@]} > 0 )) || { echo "no diagnostics collected"; exit 0; }
+          tag="packages-diagnostic-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          gh release create "$tag" "${files[@]}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "K2P extra packages diagnostics ${GITHUB_RUN_NUMBER}" \
+            --notes "Package build failed before producing .ipk files. Contains stage markers and compressed logs only."
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json url --jq .url >> "$GITHUB_STEP_SUMMARY"
