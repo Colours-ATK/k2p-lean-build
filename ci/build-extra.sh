@@ -29,7 +29,7 @@ printf 'T+%s %s begin\n' "$(date -u +%H:%M:%S)" "W2"
   printf 'mem_available_kb=%s\n' "$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)"
 } >> "$out/environment.txt"
 free_kb=$(df -Pk "$base" | awk 'NR==2 {print $4}')
-(( free_kb >= 20 * 1024 * 1024 ))
+(( free_kb >= 30 * 1024 * 1024 )) || { printf 'Insufficient free disk: require 30 GiB\n' >&2; exit 1; }
 available_kb=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
 (( available_kb >= 4 * 1024 * 1024 ))
 jobs=$(nproc)
@@ -39,6 +39,7 @@ printf 'build_jobs=%s\n' "$jobs" >> "$out/environment.txt"
 export DEBIAN_FRONTEND=noninteractive
 sudo apt-get update -qq
 sudo apt-get install -y --no-install-recommends \
+  build-essential gcc-multilib g++-multilib \
   git gawk gettext flex bison libncurses-dev libssl-dev zlib1g-dev libelf-dev \
   python3 python3-setuptools rsync unzip file wget curl ccache swig patch \
   pkg-config autoconf automake libtool gperf squashfs-tools jq zstd cmake \
@@ -110,6 +111,7 @@ done
 stage=W5
 printf 'T+%s %s begin\n' "$(date -u +%H:%M:%S)" "W5"
 make download -j"$jobs" 2>&1 | tee "$work/logs/download.log"
+make package/toolchain/compile -j"$jobs" 2>&1 | tee "$work/logs/build-toolchain.log"
 for p in libevent2 xkcptun luci-compat luci-lib-ipkg luci-app-xkcptun; do
   make "package/$p/compile" -j"$jobs" 2>&1 | tee "$work/logs/build-$p.log"
 done
