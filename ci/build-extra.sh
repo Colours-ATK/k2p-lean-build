@@ -88,16 +88,11 @@ lua5.1 -e 'assert(loadfile("package/luci-app-xkcptun/luasrc/controller/xkcptun.l
 lua5.1 -e 'assert(loadfile("package/luci-app-xkcptun/luasrc/model/cbi/xkcptun.lua"))' || { printf 'cbi lua syntax error\n' >&2; exit 1; }
 printf 'Vendored packages and Lua syntax checks passed\n' >> "$out/environment.txt"
 
-cat > .config <<'EOF'
-CONFIG_TARGET_ramips=y
-CONFIG_TARGET_ramips_mt7621=y
-CONFIG_TARGET_ramips_mt7621_DEVICE_phicomm_k2p=y
-CONFIG_PACKAGE_libevent2=m
-CONFIG_PACKAGE_xkcptun=m
-CONFIG_PACKAGE_luci-compat=m
-CONFIG_PACKAGE_luci-lib-ipkg=m
-CONFIG_PACKAGE_luci-app-xkcptun=m
-EOF
+cp "$base/configs/k2p.seed.config" .config
+for symbol in libevent2 xkcptun luci-app-xkcptun luci-lib-ipkg; do
+  sed -i "/^CONFIG_PACKAGE_$symbol=/d; /^# CONFIG_PACKAGE_$symbol is not set/d" .config
+  printf 'CONFIG_PACKAGE_%s=m\n' "$symbol" >> .config
+done
 make defconfig 2>&1 | tee "$work/logs/config.log"
 cp .config "$out/config.snapshot"
 {
@@ -111,12 +106,10 @@ done
 stage=W5
 printf 'T+%s %s begin\n' "$(date -u +%H:%M:%S)" "W5"
 make download -j"$jobs" 2>&1 | tee "$work/logs/download.log"
-# The SDK toolchain is the target that pulls in tools/toolchain and the cross
-# compiler; package/libs/toolchain alone cannot be built standalone.
-make toolchain/install -j"$jobs" V=s 2>&1 | tee "$work/logs/build-toolchain.log"
-for p in libevent2 xkcptun luci-compat luci-lib-ipkg luci-app-xkcptun; do
-  make "package/$p/compile" -j"$jobs" 2>&1 | tee "$work/logs/build-$p.log"
-done
+# Build the whole target from the proven firmware configuration. A standalone
+# `make package/<p>/compile` pulled in the kernel build and failed there, so the
+# extra packages are compiled as part of the regular image build instead.
+make -j"$jobs" 2>&1 | tee "$work/logs/build.log"
 
 stage=W6
 printf 'T+%s %s begin\n' "$(date -u +%H:%M:%S)" "W6"
@@ -147,5 +140,5 @@ grep -q "xkcptun" "$out/ipk-control.txt" || { printf 'xkcptun package metadata m
 {
   echo '=== relevant packages selected in .config ==='
   grep -E '^CONFIG_PACKAGE_(libevent2|xkcptun|luci-compat|luci-lib-ipkg|luci-app-xkcptun|luci-base|lua5\.1|liblua)=' .config || true
-} > "$out/selection.txt"
+} > "$out/selection-final.txt"
 printf 'Extra packages compiled and collected\n' >> "$out/environment.txt"
