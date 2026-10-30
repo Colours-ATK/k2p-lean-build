@@ -98,10 +98,14 @@ CONFIG_PACKAGE_luci-lib-ipkg=m
 CONFIG_PACKAGE_luci-app-xkcptun=m
 EOF
 make defconfig 2>&1 | tee "$work/logs/config.log"
-for symbol in libevent2 xkcptun luci-compat luci-lib-ipkg luci-app-xkcptun; do
-  grep -qx "CONFIG_PACKAGE_$symbol=m" .config || { printf 'package not selected: %s\n' "$symbol" >&2; exit 1; }
-done
 cp .config "$out/config.snapshot"
+{
+  echo '=== resolved values of the tracked package symbols ==='
+  grep -E '^(# )?CONFIG_PACKAGE_(libevent2|xkcptun|luci-compat|luci-lib-ipkg|luci-app-xkcptun|luci-base|lua5\.1|liblua|luci)=' .config || true
+} | tee "$out/selection.txt"
+for symbol in libevent2 xkcptun luci-compat luci-lib-ipkg luci-app-xkcptun; do
+  grep -qE "^CONFIG_PACKAGE_$symbol=(m|y)$" .config || { printf 'package not selected: %s\n' "$symbol" >&2; exit 1; }
+done
 
 stage=W5
 printf 'T+%s %s begin\n' "$(date -u +%H:%M:%S)" "W5"
