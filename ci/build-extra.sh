@@ -111,7 +111,9 @@ done
 stage=W5
 printf 'T+%s %s begin\n' "$(date -u +%H:%M:%S)" "W5"
 make download -j"$jobs" 2>&1 | tee "$work/logs/download.log"
-make package/toolchain/compile -j"$jobs" 2>&1 | tee "$work/logs/build-toolchain.log"
+# The SDK toolchain is the target that pulls in tools/toolchain and the cross
+# compiler; package/libs/toolchain alone cannot be built standalone.
+make toolchain/install -j"$jobs" V=s 2>&1 | tee "$work/logs/build-toolchain.log"
 for p in libevent2 xkcptun luci-compat luci-lib-ipkg luci-app-xkcptun; do
   make "package/$p/compile" -j"$jobs" 2>&1 | tee "$work/logs/build-$p.log"
 done
