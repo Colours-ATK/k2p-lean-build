@@ -1,6 +1,5 @@
-diff -urN orig/embedded/ap/apcli_assoc.c new/embedded/ap/apcli_assoc.c
---- orig/embedded/ap/apcli_assoc.c	2026-11-01 13:02:06.295596289 +0800
-+++ new/embedded/ap/apcli_assoc.c	2026-11-01 13:02:39.420596663 +0800
+--- a/embedded/ap/apcli_assoc.c
++++ b/embedded/ap/apcli_assoc.c
 @@ -1589,6 +1589,17 @@
  	pApCliEntry->MlmeAux.BssType = BSS_INFRA;
  	pApCliEntry->MlmeAux.CapabilityInfo = CapabilityInfo & SUPPORTED_CAPABILITY_INFO;
@@ -13,15 +12,14 @@ diff -urN orig/embedded/ap/apcli_assoc.c new/embedded/ap/apcli_assoc.c
 +	if (pAd->CommonCfg.ApCliEdcaCwmin <= 15) {
 +		pApCliEntry->MlmeAux.APEdcaParm.Cwmin[0] = pAd->CommonCfg.ApCliEdcaCwmin;
 +		MTWF_LOG(DBG_CAT_CLIENT, CATCLIENT_APCLI, DBG_LVL_INFO,
-+				("apcli uplink EDCA BE Cwmin overridden to %d\n\",
++				("apcli uplink EDCA BE Cwmin overridden to %d\n",
 +				pAd->CommonCfg.ApCliEdcaCwmin));
 +	}
  	/* filter out un-supported rates */
  	pApCliEntry->MlmeAux.SupRateLen = SupRateLen;
  	NdisMoveMemory(pApCliEntry->MlmeAux.SupRate, SupRate, SupRateLen);
-diff -urN orig/embedded/common/cmm_profile.c new/embedded/common/cmm_profile.c
---- orig/embedded/common/cmm_profile.c	2026-11-01 13:02:06.297596289 +0800
-+++ new/embedded/common/cmm_profile.c	2026-11-01 13:02:39.421596663 +0800
+--- a/embedded/common/cmm_profile.c
++++ b/embedded/common/cmm_profile.c
 @@ -5773,6 +5773,26 @@
  
  #endif /* MAC_REPEATER_SUPPORT */
@@ -44,14 +42,13 @@ diff -urN orig/embedded/common/cmm_profile.c new/embedded/common/cmm_profile.c
 +
 +			pAd->CommonCfg.ApCliEdcaCwmin = cwmin;
 +			MTWF_LOG(DBG_CAT_CFG, DBG_SUBCAT_ALL, DBG_LVL_INFO,
-+					("ApCliEdcaCwmin=%d (255 = keep upstream EDCA)\n\", cwmin));
++					("ApCliEdcaCwmin=%d (255 = keep upstream EDCA)\n", cwmin));
 +		}
  #endif /* CONFIG_AP_SUPPORT */
  
  		if (RTMPGetKeyParameter("SE_OFF", tmpbuf, 25, pBuffer, TRUE)) {
-diff -urN orig/embedded/include/rtmp.h new/embedded/include/rtmp.h
---- orig/embedded/include/rtmp.h	2026-11-01 13:02:06.309596289 +0800
-+++ new/embedded/include/rtmp.h	2026-11-01 13:02:06.396596290 +0800
+--- a/embedded/include/rtmp.h
++++ b/embedded/include/rtmp.h
 @@ -2520,6 +2520,11 @@
  	EDCA_PARM APEdcaParm[WMM_NUM];	/* EDCA parameters of the current associated AP */
  	QBSS_LOAD_PARM APQbssLoad;	/* QBSS load of the current associated AP */
