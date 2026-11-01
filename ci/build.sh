@@ -163,6 +163,26 @@ make download -j"$jobs" 2>&1 | tee "$work/logs/download.log"
   df -h "$base"
   du -sh "$work/lede/dl" 2>/dev/null || true
 } | tee -a "$work/logs/disk.log"
+
+# 先把内核与闭源驱动单独编出来：这两步是最高风险组件，
+# 失败时能拿到可读的详细日志，而不是只看到一个 "failed to build"。
+stage=W5K
+printf 'T+%s %s begin
+' "$(date -u +%H:%M:%S)" "W5K"
+make target/linux/compile V=s 2>&1 | tee "$work/logs/kernel-compile.log"
+kernel_dir=$(find "$work/lede/build_dir" -maxdepth 1 -type d -name 'linux-ramips_*' | head -1)
+[[ -n "$kernel_dir" ]] || { printf 'Kernel build directory not produced\n' >&2; exit 1; }
+printf 'W5K: kernel built at %s
+' "$kernel_dir"
+stage=W5D
+printf 'T+%s %s begin
+' "$(date -u +%H:%M:%S)" "W5D"
+make package/lean/mt/drivers/mt7615d/compile V=s 2>&1 | tee "$work/logs/mtwifi-compile.log"
+[[ -f "$work/lede/build_dir/target-mipsel_24kc_musl/linux-ramips_mt7621/mt7615d-5.0.4.0/mt_wifi_ap/mt_wifi.ko" ]] \
+  || { printf 'mt_wifi.ko was not produced\n' >&2; exit 1; }
+printf 'W5D: mt_wifi.ko built\n'
+
+stage=W5
 make -j"$jobs" 2>&1 | tee "$work/logs/build.log"
 {
   echo '=== disk after build ==='
@@ -278,7 +298,10 @@ find bin/targets/ramips/mt7621 -maxdepth 1 -type f -name '*.manifest' -exec cp '
 compgen -G "$out/*.manifest" > /dev/null
 cp "$fw" "$out/"
 cp "$base/configs/k2p.seed.config" "$out/seed.config"
-for name in config download build; do gzip -n -c "$work/logs/$name.log" > "$out/$name.log.gz"; done
+for name in config download build kernel-compile mtwifi-compile; do
+  [[ -f "$work/logs/$name.log" ]] || continue
+  gzip -n -c "$work/logs/$name.log" > "$out/$name.log.gz"
+done
 printf 'Candidate build only. No device boot, radio stability or Breed compatibility test has been performed. Back up and verify the device before any manual flashing.\n' > "$out/verification-scope.txt"
 cd "$out"
 find . -maxdepth 1 -type f ! -name sha256sums -print0 | sort -z | xargs -0 sha256sum > sha256sums
