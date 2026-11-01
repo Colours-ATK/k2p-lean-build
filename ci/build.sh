@@ -164,8 +164,12 @@ make download -j"$jobs" 2>&1 | tee "$work/logs/download.log"
   du -sh "$work/lede/dl" 2>/dev/null || true
 } | tee -a "$work/logs/disk.log"
 
-# 先把内核与闭源驱动单独编出来：这两步是最高风险组件，
-# 失败时能拿到可读的详细日志，而不是只看到一个 "failed to build"。
+# 先把交叉工具链、内核、闭源驱动串行编出来：这三步是最高风险组件，
+# 串行可避免驱动在内核产物就绪前启动；失败时日志带 V=s，可直接看到错误行。
+stage=W5T
+printf 'T+%s %s begin
+' "$(date -u +%H:%M:%S)" "W5T"
+make toolchain/install -j"$jobs" 2>&1 | tee "$work/logs/toolchain-compile.log"
 stage=W5K
 printf 'T+%s %s begin
 ' "$(date -u +%H:%M:%S)" "W5K"
@@ -298,7 +302,7 @@ find bin/targets/ramips/mt7621 -maxdepth 1 -type f -name '*.manifest' -exec cp '
 compgen -G "$out/*.manifest" > /dev/null
 cp "$fw" "$out/"
 cp "$base/configs/k2p.seed.config" "$out/seed.config"
-for name in config download build kernel-compile mtwifi-compile; do
+for name in config download build toolchain-compile kernel-compile mtwifi-compile; do
   [[ -f "$work/logs/$name.log" ]] || continue
   gzip -n -c "$work/logs/$name.log" > "$out/$name.log.gz"
 done
