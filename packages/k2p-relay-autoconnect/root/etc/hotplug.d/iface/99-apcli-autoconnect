@@ -1,0 +1,119 @@
+#!/bin/sh
+# Enable MTK's ApCli AutoConnect on a K2P (or any MT7621 + mt7615d) router that
+# is used as a **wireless relay**, so the relay recovers automatically when the
+# upstream AP changes channel.
+#
+# Background
+# ----------
+# The relay's STA side (apcli0) and the local AP share one radio, so both have to
+# sit on the same channel. The local AP channel is a static startup value
+# (Channel= in the wireless profile), so when the upstream AP is moved to
+# another channel the driver cannot re-derive the shared channel:
+#
+#   !!! APCLI LINK DOWN - IF(apcli0) (Reason=send deauth req,sub=apcli if down)
+#
+# and the relay stays down until the profile is edited and the radio reloaded.
+#
+# With ApCliAutoConnect=1 the driver, while the link is down, scans for the
+# upstream SSID every second and re-applies the channel it found to the whole
+# band. The AP and the STA side share one radio, so the local AP follows and the
+# relay comes back on its own.
+#
+# Relay only
+# ----------
+# This is pointless in plain AP mode: there is no apcli0 STA link to recover.
+# The handler therefore checks the wireless profile first and exits unless the
+# radio is configured as a relay (ApCliEnable=1 together with an upstream SSID).
+#
+# Settings applied
+# ----------------
+# Both are runtime ioctls, so nothing in the profile has to be changed and the
+# driver keeps using its own settings on the next boot:
+#
+#   iwpriv ra0 set MACRepeaterEn=1
+#       repeater mode; required by RTMPRepeaterReconnectionCheck()
+#   iwpriv apcli0 set ApCliAutoConnect=1
+#       the scan-and-reconnect behaviour itself
+#
+# MACRepeaterOuiMode must be 2 (VENDOR_DEFINED) for the reconnection check to
+# run. It has no runtime ioctl, it is read from the profile at driver start.
+# The stock Lean profile already ships 2, so this is only reported, not fixed.
+#
+# Loop safety
+# -----------
+# Enabling AutoConnect drops apcli0 on purpose. netifd then raises ifdown and
+# later ifup for this interface again, so a handler that sets the flag on
+# every ifup would trigger itself forever. The lock file below is created
+# synchronously, before the worker is backgrounded, so only one worker can
+# ever run per boot.
+
+[ "$ACTION" = "ifup" ] || exit 0
+[ "$INTERFACE" = "apcli" ] || exit 0
+
+TAG=apcli-autoconnect
+
+# --- relay check -----------------------------------------------------------
+# Only a relay configuration benefits from this. A radio is a relay when it
+# has ApCliEnable=1 together with an upstream SSID.
+relay=no
+for f in /etc/wireless/mt7615/*.dat; do
+	[ -f "$f" ] || continue
+	grep -q '^ApCliEnable=1' "$f" || continue
+	grep -qE '^ApCliSsid=.+' "$f" || continue
+	relay=yes
+	break
+done
+if [ "$relay" != yes ]; then
+	logger -t "$TAG" "not a relay configuration (no ApCliEnable=1 with an upstream SSID), skipping"
+	exit 0
+fi
+
+# --- one-shot guard --------------------------------------------------------
+lock=/tmp/.apcli-autoconnect.lock
+[ -e "$lock" ] && exit 0
+: > "$lock"
+
+(
+	# Wait for the STA side to be associated. The interface being up only
+	# means DHCP succeeded on the relay side, the driver may still be
+	# associating the upstream.
+	i=0
+	while [ "$i" -lt 60 ]; do
+		iwconfig apcli0 2>/dev/null | grep -q 'Access Point: ' && break
+		sleep 1
+		i=$((i + 1))
+	done
+	if ! iwconfig apcli0 2>/dev/null | grep -q 'Access Point: '; then
+		logger -t "$TAG" "apcli0 not associated after 60s, giving up"
+		rm -f "$lock"
+		exit 0
+	fi
+
+	# Repeater mode has to be on for the reconnection check to run.
+	if ! iwpriv ra0 set MACRepeaterEn=1 >/dev/null 2>&1; then
+		logger -t "$TAG" "failed to enable MACRepeaterEn"
+		rm -f "$lock"
+		exit 0
+	fi
+
+	# MACRepeaterOuiMode has no runtime ioctl; report it if it is wrong.
+	for f in /etc/wireless/mt7615/*.dat; do
+		[ -f "$f" ] || continue
+		grep -q '^ApCliEnable=1' "$f" || continue
+		if ! grep -q '^MACRepeaterOuiMode=2' "$f"; then
+			logger -t "$TAG" "warning: $f needs MACRepeaterOuiMode=2 for auto reconnect"
+		fi
+		break
+	done
+
+	# Let the link settle before the driver takes it down and rescans.
+	sleep 5
+	if iwpriv apcli0 set ApCliAutoConnect=1 >/dev/null 2>&1; then
+		logger -t "$TAG" "ApCliAutoConnect enabled on apcli0"
+	else
+		logger -t "$TAG" "failed to enable ApCliAutoConnect on apcli0"
+		rm -f "$lock"
+	fi
+) &
+
+exit 0

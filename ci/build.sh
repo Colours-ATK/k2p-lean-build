@@ -101,6 +101,20 @@ chmod 0755 "$work/lede/files/etc/init.d/firmware.sh"
 printf 'W4: installed l1dat_parser and l1profile overrides
 '
 
+# ---- relay autoconnect helper ----
+# 中继场景下上游换信道后的自动恢复（netifd iface hotplug，纯 AP 时自行跳过）。
+# 只放 hotplug 处理器：MACRepeaterEn / ApCliAutoConnect 都是运行时 ioctl，
+# 不改 profile，因此对 AP 用户与下次启动都无影响。
+mkdir -p "$work/lede/files/etc/hotplug.d/iface"
+cp "$base/packages/k2p-relay-autoconnect/root/etc/hotplug.d/iface/99-apcli-autoconnect" \
+   "$work/lede/files/etc/hotplug.d/iface/99-apcli-autoconnect"
+chmod 0755 "$work/lede/files/etc/hotplug.d/iface/99-apcli-autoconnect"
+[[ -x "$work/lede/files/etc/hotplug.d/iface/99-apcli-autoconnect" ]]
+grep -q 'ApCliAutoConnect=1' "$work/lede/files/etc/hotplug.d/iface/99-apcli-autoconnect"
+grep -q 'ApCliEnable=1' "$work/lede/files/etc/hotplug.d/iface/99-apcli-autoconnect"
+printf 'W4: installed relay autoconnect helper
+'
+
 # ---- 驱动源码补丁 ----
 # 闭源 mt7615d 的补丁必须在编译前应用。用 patch 而不是直接改文件，
 # 是为了让补丁是否真的打上由构建流程自证（apply 失败即中止）。
@@ -279,6 +293,12 @@ ko=$(find "$work/lede" -path '*mt_wifi.ko' -type f 2>/dev/null | head -1)
 [[ -n "$ko" ]] || { printf 'mt_wifi.ko not found in the build tree\n' >&2; exit 1; }
 strings "$ko" | grep -q 'ApCliEdcaCwmin' || { printf 'Driver lacks the ApCliEdcaCwmin profile key\n' >&2; exit 1; }
 printf 'driver supports ApCliEdcaCwmin\n' >> "$out/image-check.txt"
+printf 'W6: verifying the relay autoconnect helper
+'
+# hotplug 处理器必须真的进了镜像，且带中继判据
+grep -q 'etc/hotplug.d/iface/99-apcli-autoconnect' "$out/rootfs-listing.txt" \
+  || { printf 'Relay autoconnect helper missing from the image\n' >&2; exit 1; }
+printf 'present: etc/hotplug.d/iface/99-apcli-autoconnect\n' >> "$out/image-check.txt"
 printf 'W6: verifying boot hook content
 '
 if command -v unsquashfs >/dev/null && [ -n "${rootfs:-}" ]; then
