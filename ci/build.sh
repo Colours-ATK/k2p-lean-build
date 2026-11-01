@@ -298,6 +298,9 @@ ko=$(find "$work/lede" -path '*mt_wifi.ko' -type f 2>/dev/null | head -1)
 [[ -n "$ko" ]] || { printf 'mt_wifi.ko not found in the build tree\n' >&2; exit 1; }
 strings "$ko" | grep -q 'ApCliEdcaCwmin' || { printf 'Driver lacks the ApCliEdcaCwmin profile key\n' >&2; exit 1; }
 printf 'driver supports ApCliEdcaCwmin\n' >> "$out/image-check.txt"
+# 幂等的 ApCliAutoConnect setter：helper 依赖这个标记串做能力探测
+strings "$ko" | grep -q 'ApCliAutoConnect already armed' || { printf 'Driver lacks the idempotent ApCliAutoConnect setter\n' >&2; exit 1; }
+printf 'driver has idempotent ApCliAutoConnect\n' >> "$out/image-check.txt"
 printf 'W6: verifying the relay autoconnect helper
 '
 # hotplug 处理器必须真的进了镜像，且带中继判据

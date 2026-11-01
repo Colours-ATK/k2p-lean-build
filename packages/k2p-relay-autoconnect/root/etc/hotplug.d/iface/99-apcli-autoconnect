@@ -5,8 +5,8 @@
 #
 # Background
 # ----------
-# The relay's STA side (apcli0) and the local AP share one radio, so both have to
-# sit on the same channel. The local AP channel is a static startup value
+# The relay's STA side (apcli0) and the local AP share one radio, so both have
+# to sit on the same channel. The local AP channel is a static startup value
 # (Channel= in the wireless profile), so when the upstream AP is moved to
 # another channel the driver cannot re-derive the shared channel:
 #
@@ -25,6 +25,25 @@
 # The handler therefore checks the wireless profile first and exits unless the
 # radio is configured as a relay (ApCliEnable=1 together with an upstream SSID).
 #
+# Re-arming across driver reloads
+# -------------------------------
+# AutoConnectFlag is driver state: it has no profile key and no read-back (the
+# driver only exposes a setter, Set_ApCli_AutoConnect_Proc), and it is reset
+# whenever the driver is reloaded (wifi reload, mtkwifi restart, ...). A
+# one-shot "armed once per boot" flag therefore loses the feature silently
+# until the next reboot.
+#
+# This handler re-arms on every ifup instead. That is only safe when the setter
+# is idempotent, i.e. when the flag is already set it returns without calling
+# Set_ApCli_Enable("0"):
+#
+#   patches/0002-mt7615d-apcli-autoconnect-idempotent.patch
+#
+# adds exactly that for the value 1 (value 2 keeps the force-rescan meaning).
+# The patch logs a marker string, which is used here as a capability probe: on
+# an unpatched driver the handler falls back to arming once per boot, so this
+# cannot turn into a link drop on every ifup on a stock tree.
+#
 # Settings applied
 # ----------------
 # Both are runtime ioctls, so nothing in the profile has to be changed and the
@@ -38,82 +57,82 @@
 # MACRepeaterOuiMode must be 2 (VENDOR_DEFINED) for the reconnection check to
 # run. It has no runtime ioctl, it is read from the profile at driver start.
 # The stock Lean profile already ships 2, so this is only reported, not fixed.
-#
-# Loop safety
-# -----------
-# Enabling AutoConnect drops apcli0 on purpose. netifd then raises ifdown and
-# later ifup for this interface again, so a handler that sets the flag on
-# every ifup would trigger itself forever. The lock file below is created
-# synchronously, before the worker is backgrounded, so only one worker can
-# ever run per boot.
 
 [ "$ACTION" = "ifup" ] || exit 0
 [ "$INTERFACE" = "apcli" ] || exit 0
 
 TAG=apcli-autoconnect
+RUN_LOCK=/tmp/.apcli-autoconnect.run
+ONCE_FLAG=/tmp/.apcli-autoconnect.once
+ATTEMPTS=3
+RETRY_DELAY=15
+SETTLE=5
+
+log() { logger -t "$TAG" "$*"; }
 
 # --- relay check -----------------------------------------------------------
 # Only a relay configuration benefits from this. A radio is a relay when it
 # has ApCliEnable=1 together with an upstream SSID.
 relay=no
+profile=
 for f in /etc/wireless/mt7615/*.dat; do
 	[ -f "$f" ] || continue
 	grep -q '^ApCliEnable=1' "$f" || continue
 	grep -qE '^ApCliSsid=.+' "$f" || continue
 	relay=yes
+	profile=$f
 	break
 done
 if [ "$relay" != yes ]; then
-	logger -t "$TAG" "not a relay configuration (no ApCliEnable=1 with an upstream SSID), skipping"
+	log "not a relay configuration (no ApCliEnable=1 with an upstream SSID), skipping"
 	exit 0
 fi
 
-# --- one-shot guard --------------------------------------------------------
-lock=/tmp/.apcli-autoconnect.lock
-[ -e "$lock" ] && exit 0
-: > "$lock"
+# --- driver capability probe ----------------------------------------------
+# The marker string only exists in a driver built with patches/0002.
+idempotent=no
+for ko in /lib/modules/"$(uname -r)"/mt_wifi.ko /lib/modules/*/mt_wifi.ko; do
+	[ -f "$ko" ] || continue
+	grep -qa 'ApCliAutoConnect already armed' "$ko" 2>/dev/null && idempotent=yes
+	break
+done
 
 (
-	# Wait for the STA side to be associated. The interface being up only
-	# means DHCP succeeded on the relay side, the driver may still be
-	# associating the upstream.
-	i=0
-	while [ "$i" -lt 60 ]; do
-		iwconfig apcli0 2>/dev/null | grep -q 'Access Point: ' && break
-		sleep 1
-		i=$((i + 1))
-	done
-	if ! iwconfig apcli0 2>/dev/null | grep -q 'Access Point: '; then
-		logger -t "$TAG" "apcli0 not associated after 60s, giving up"
-		rm -f "$lock"
+	# Concurrency guard only. flock is released when this shell exits, so a
+	# killed worker can never leave a lock behind that blocks a later re-arm.
+	flock -n 9 || exit 0
+
+	# Unpatched driver: every call drops apcli0, so keep the old
+	# "arm once per boot" rule.
+	if [ "$idempotent" != yes ] && [ -e "$ONCE_FLAG" ]; then
 		exit 0
 	fi
+
+	# Let the interface settle before the driver may take the link down.
+	sleep "$SETTLE"
 
 	# Repeater mode has to be on for the reconnection check to run.
 	if ! iwpriv ra0 set MACRepeaterEn=1 >/dev/null 2>&1; then
-		logger -t "$TAG" "failed to enable MACRepeaterEn"
-		rm -f "$lock"
-		exit 0
+		log "warning: failed to enable MACRepeaterEn"
 	fi
 
 	# MACRepeaterOuiMode has no runtime ioctl; report it if it is wrong.
-	for f in /etc/wireless/mt7615/*.dat; do
-		[ -f "$f" ] || continue
-		grep -q '^ApCliEnable=1' "$f" || continue
-		if ! grep -q '^MACRepeaterOuiMode=2' "$f"; then
-			logger -t "$TAG" "warning: $f needs MACRepeaterOuiMode=2 for auto reconnect"
-		fi
-		break
-	done
-
-	# Let the link settle before the driver takes it down and rescans.
-	sleep 5
-	if iwpriv apcli0 set ApCliAutoConnect=1 >/dev/null 2>&1; then
-		logger -t "$TAG" "ApCliAutoConnect enabled on apcli0"
-	else
-		logger -t "$TAG" "failed to enable ApCliAutoConnect on apcli0"
-		rm -f "$lock"
+	if ! grep -q '^MACRepeaterOuiMode=2' "$profile"; then
+		log "warning: $profile needs MACRepeaterOuiMode=2 for auto reconnect"
 	fi
-) &
+
+	# The setter fails while the driver is already scanning, so retry.
+	i=0
+	while [ "$i" -lt "$ATTEMPTS" ]; do
+		i=$((i + 1))
+		if iwpriv apcli0 set ApCliAutoConnect=1 >/dev/null 2>&1; then
+			[ "$idempotent" = yes ] || : > "$ONCE_FLAG"
+			log "ApCliAutoConnect ensured on apcli0 (attempt $i, idempotent=$idempotent)"
+			exit 0
+		fi
+		[ "$i" -lt "$ATTEMPTS" ] && sleep "$RETRY_DELAY"
+	done
+	log "failed to ensure ApCliAutoConnect after $ATTEMPTS attempts"
+) 9>"$RUN_LOCK" &
 
 exit 0

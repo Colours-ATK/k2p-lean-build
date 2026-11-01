@@ -1,0 +1,20 @@
+--- a/embedded/common/ap_cfg.c
++++ b/embedded/common/ap_cfg.c
+@@ -12316,6 +12316,17 @@
+ 	NdisZeroMemory(&Ssid, sizeof(NDIS_802_11_SSID));
+ 	wdev = &pApCfg->ApCliTab[ifIndex].wdev;
+ 
++	/* Idempotent ensure: "ApCliAutoConnect=1" must not tear down a link that is
++	 * already armed. The flag lives in the driver and is reset by every driver
++	 * reload, so an external hook re-arms it on each ifup; without this check
++	 * every ifup would drop apcli0 again. "2" keeps the force-rescan behaviour.
++	 */
++	if (scan_mode == 1 && pApCfg->ApCliTab[ifIndex].AutoConnectFlag == TRUE) {
++		MTWF_LOG(DBG_CAT_CLIENT, DBG_SUBCAT_ALL, DBG_LVL_INFO,
++				("ApCliAutoConnect already armed, keep link up\n"));
++		return TRUE;
++	}
++
+ 	if (ApScanRunning(pAd, wdev) == TRUE) {
+ 		MTWF_LOG(DBG_CAT_CLIENT, DBG_SUBCAT_ALL, DBG_LVL_ERROR, ("Set_ApCli_AutoConnect_Proc() is still running\n"));
+ 		return FALSE;

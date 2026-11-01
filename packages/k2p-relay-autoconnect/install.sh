@@ -14,7 +14,7 @@ SRC=$(dirname "$0")/root/etc/hotplug.d/iface/99-apcli-autoconnect
 if [ "$1" = "--uninstall" ]; then
 	iwpriv apcli0 set ApCliAutoConnect=0 >/dev/null 2>&1 || true
 	rm -f "$DEST"
-	rm -f /tmp/.apcli-autoconnect.lock
+	rm -f /tmp/.apcli-autoconnect.once /tmp/.apcli-autoconnect.run
 	logger -t apcli-autoconnect "helper removed"
 	echo "removed $DEST"
 	exit 0
@@ -24,6 +24,20 @@ mkdir -p "$(dirname "$DEST")"
 cp "$SRC" "$DEST"
 chmod 0755 "$DEST"
 echo "installed $DEST"
+
+# Which arming policy the helper will use on this driver.
+idempotent=no
+for ko in /lib/modules/"$(uname -r)"/mt_wifi.ko /lib/modules/*/mt_wifi.ko; do
+	[ -f "$ko" ] || continue
+	grep -qa 'ApCliAutoConnect already armed' "$ko" 2>/dev/null && idempotent=yes
+	break
+done
+if [ "$idempotent" = yes ]; then
+	echo "driver is idempotent: the helper re-arms on every ifup (survives wifi reload)"
+else
+	echo "driver has no idempotent setter (patches/0002 not applied):"
+	echo "  the helper arms once per boot, so a wifi reload disables AutoConnect until reboot"
+fi
 
 # Apply now as well, so the feature does not need a reboot. The helper does the
 # same thing on every boot, after the relay interface comes up.
