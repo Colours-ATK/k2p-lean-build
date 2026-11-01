@@ -1,5 +1,5 @@
---- a/embedded/common/ap_cfg.c
-+++ b/embedded/common/ap_cfg.c
+--- a/embedded/ap/ap_cfg.c
++++ b/embedded/ap/ap_cfg.c
 @@ -12316,6 +12316,17 @@
  	NdisZeroMemory(&Ssid, sizeof(NDIS_802_11_SSID));
  	wdev = &pApCfg->ApCliTab[ifIndex].wdev;
