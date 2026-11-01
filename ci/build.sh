@@ -174,8 +174,9 @@ stage=W5K
 printf 'T+%s %s begin
 ' "$(date -u +%H:%M:%S)" "W5K"
 make target/linux/compile V=s 2>&1 | tee "$work/logs/kernel-compile.log"
-kernel_dir=$(find "$work/lede/build_dir" -maxdepth 1 -type d -name 'linux-ramips_*' | head -1)
-[[ -n "$kernel_dir" ]] || { printf 'Kernel build directory not produced\n' >&2; exit 1; }
+kernel_dir=$(find "$work/lede/build_dir" -maxdepth 2 -type d -name 'linux-ramips_*' | head -1)
+[[ -n "$kernel_dir" && -f "$kernel_dir/Module.symvers" && -f "$kernel_dir/.modules" ]] \
+  || { printf 'Kernel build artefacts missing (kernel_dir=%s)\n' "$kernel_dir" >&2; exit 1; }
 printf 'W5K: kernel built at %s
 ' "$kernel_dir"
 stage=W5D
