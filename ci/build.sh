@@ -101,6 +101,26 @@ chmod 0755 "$work/lede/files/etc/init.d/firmware.sh"
 printf 'W4: installed l1dat_parser and l1profile overrides
 '
 
+# ---- 驱动源码补丁 ----
+# 闭源 mt7615d 的补丁必须在编译前应用。用 patch 而不是直接改文件，
+# 是为了让补丁是否真的打上由构建流程自证（apply 失败即中止）。
+stage=W4P
+printf 'T+%s %s begin
+' "$(date -u +%H:%M:%S)" "W4P"
+mtwifi_src="$work/lede/package/lean/mt/drivers/mt7615d/src/mt_wifi"
+[[ -d "$mtwifi_src" ]] || { printf 'mt7615d source tree not found: %s\n' "$mtwifi_src" >&2; exit 1; }
+for p in "$base"/patches/*.patch; do
+  [[ -e "$p" ]] || continue
+  printf 'applying %s\n' "$(basename "$p")"
+  patch -p1 -d "$mtwifi_src" < "$p" || { printf 'Failed to apply %s\n' "$p" >&2; exit 1; }
+  # 应用后自证：补丁必须真的改到了源码，而不是被静默跳过
+  patch -p1 -R --dry-run -d "$mtwifi_src" < "$p" >/dev/null 2>&1 || { printf 'Patch %s did not take effect\n' "$p" >&2; exit 1; }
+  # 让后面的 git diff --exit-code（工作区 vs 索引）通过：把改动放进索引
+  git -C "$work/lede" add -A -- package/lean/mt/drivers/mt7615d/src/mt_wifi
+done
+printf 'W4P: driver patches applied
+'
+
 stage=W4
 printf 'T+%s %s begin
 ' "$(date -u +%H:%M:%S)" "W4"
@@ -214,6 +234,26 @@ if grep -q 'etc/wireless/mt7603' "$out/rootfs-listing.txt"; then
   printf 'Unexpected MT7603 radio configuration present\n' >&2
   exit 1
 fi
+printf 'W6: verifying mount-point removal
+'
+# 挂载点功能已删除：/sbin/block、/etc/config/fstab、/etc/init.d/fstab 都不应存在
+for gone in sbin/block etc/config/fstab etc/init.d/fstab; do
+  if grep -q "$gone" "$out/rootfs-listing.txt"; then
+    printf 'Mount-point feature still present in the image: %s\n' "$gone" >&2
+    exit 1
+  fi
+  printf 'absent: %s\n' "$gone" >> "$out/image-check.txt"
+done
+# fstools 必须保留：overlay / mount_root 依赖它的 libfstools.so，与 block-mount 是两个独立包
+grep -q 'libfstools\.so' "$out/rootfs-listing.txt" || { printf 'fstools missing (libfstools.so), overlay would break\n' >&2; exit 1; }
+printf 'present: libfstools.so\n' >> "$out/image-check.txt"
+printf 'W6: verifying the apcli EDCA override landed in the driver
+'
+# 驱动补丁是否真的编进了 .ko：用字符串自证，而不是相信补丁应用成功
+ko=$(find "$work/lede" -path '*mt_wifi.ko' -type f 2>/dev/null | head -1)
+[[ -n "$ko" ]] || { printf 'mt_wifi.ko not found in the build tree\n' >&2; exit 1; }
+strings "$ko" | grep -q 'ApCliEdcaCwmin' || { printf 'Driver lacks the ApCliEdcaCwmin profile key\n' >&2; exit 1; }
+printf 'driver supports ApCliEdcaCwmin\n' >> "$out/image-check.txt"
 printf 'W6: verifying boot hook content
 '
 if command -v unsquashfs >/dev/null && [ -n "${rootfs:-}" ]; then
