@@ -134,6 +134,9 @@ apcli-autoconnect: not a relay configuration (no ApCliEnable=1 with an upstream 
 
 * Enabling the flag **drops the relay link once** (about 5–15 s). Doing it while
   traffic is flowing interrupts that traffic.
+* Toggling the flag repeatedly (off, then on again) tears the link down each
+  time; the relay needs 15–40 s to come back after the last change. Set it once
+  and leave it.
 * While the link is down the driver scans all channels once per second, briefly
   occupying airtime that the local AP would otherwise use.
 * It only helps with **channel changes of the upstream AP**. It does not raise
