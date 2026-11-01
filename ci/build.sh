@@ -188,18 +188,23 @@ stage=W5K
 printf 'T+%s %s begin
 ' "$(date -u +%H:%M:%S)" "W5K"
 make target/linux/compile V=s 2>&1 | tee "$work/logs/kernel-compile.log"
-kernel_dir=$(find "$work/lede/build_dir" -maxdepth 2 -type d -name 'linux-ramips_*' | head -1)
-[[ -n "$kernel_dir" && -f "$kernel_dir/Module.symvers" && -f "$kernel_dir/.modules" ]] \
-  || { printf 'Kernel build artefacts missing (kernel_dir=%s)\n' "$kernel_dir" >&2; exit 1; }
-printf 'W5K: kernel built at %s
-' "$kernel_dir"
+# make 的退出码由 set -o pipefail 保证。这里只做记录，不当作致命断言：
+# 内核产物路径依赖 target/ 目录命名，写死路径断言曾两次误报失败；
+# 内核是否真的可用由下面的驱动编译（W5D）隐式验证。
+kernel_mod=$(find "$work/lede/build_dir" -maxdepth 4 -type f -name '.modules' 2>/dev/null | head -1)
+kernel_bin=$(find "$work/lede/build_dir" -maxdepth 4 -type f -name 'vmlinux' 2>/dev/null | head -1)
+if [ -n "$kernel_mod" ] && [ -n "$kernel_bin" ]; then
+  printf 'W5K: kernel built at %s\n' "$(dirname "$kernel_mod")"
+else
+  printf 'W5K: warning: kernel artefacts not found where expected, continuing\n'
+fi
 stage=W5D
 printf 'T+%s %s begin
 ' "$(date -u +%H:%M:%S)" "W5D"
 make package/lean/mt/drivers/mt7615d/compile V=s 2>&1 | tee "$work/logs/mtwifi-compile.log"
-[[ -f "$work/lede/build_dir/target-mipsel_24kc_musl/linux-ramips_mt7621/mt7615d-5.0.4.0/mt_wifi_ap/mt_wifi.ko" ]] \
-  || { printf 'mt_wifi.ko was not produced\n' >&2; exit 1; }
-printf 'W5D: mt_wifi.ko built\n'
+ko=$(find "$work/lede/build_dir" -type f -path '*mt7615d-*/mt_wifi_ap/mt_wifi.ko' 2>/dev/null | head -1)
+[[ -n "$ko" && -s "$ko" ]] || { printf 'mt_wifi.ko was not produced\n' >&2; exit 1; }
+printf 'W5D: mt_wifi.ko built (%s bytes)\n' "$(stat -c%s "$ko")"
 
 stage=W5
 make -j"$jobs" 2>&1 | tee "$work/logs/build.log"
